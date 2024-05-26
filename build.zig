@@ -80,32 +80,29 @@ fn current_file() []const u8 {
     return @src().file;
 }
 
-const sep = std.fs.path.sep_str;
-const cwd = std.fs.path.dirname(current_file()).?;
-const dir_raylib = cwd ++ sep ++ "raylib" ++ sep ++ "src";
-
 const raylib_build = @import("raylib/src/build.zig");
 
-fn linkThisLibrary(b: *std.Build, target: std.Target.Query, optimize: std.builtin.Mode) *std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{ .name = "raylib.zig", .target = b.resolveTargetQuery(target), .optimize = optimize });
-    lib.addIncludePath(.{ .path = dir_raylib });
-    lib.addIncludePath(.{ .path = cwd });
+fn linkThisLibrary(b: *std.Build, cwd: []const u8, dir_raylib: []const u8, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const lib = b.addStaticLibrary(.{ .name = "raylib.zig", .target = target, .optimize = optimize });
+    lib.addIncludePath(b.path(dir_raylib));
+    lib.addIncludePath(b.path(cwd));
     lib.linkLibC();
-    lib.addCSourceFile(.{ .file = .{ .path = cwd ++ sep ++ "marshal.c" }, .flags = &.{} });
+    lib.addCSourceFile(.{ .file = b.path(b.pathJoin(&.{ cwd, "marshal.c" })), .flags = &.{} });
     std.log.info("include '{s}' to {s}", .{ dir_raylib, lib.name });
     std.log.info("include '{s}' to {s}", .{ cwd, lib.name });
     return lib;
 }
 
 /// add this package to exe
-pub fn addTo(b: *std.Build, exe: *std.Build.Step.Compile, target: std.Target.Query, optimize: std.builtin.Mode, raylibOptions: raylib_build.Options) void {
-    exe.root_module.addAnonymousImport("raylib", .{ .root_source_file = .{ .path = cwd ++ sep ++ "raylib.zig" } });
+pub fn addTo(b: *std.Build, cwd: []const u8, exe: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode, raylibOptions: raylib_build.Options) void {
+    const dir_raylib = b.pathJoin(&.{ cwd, "raylib", "src" });
+    exe.root_module.addAnonymousImport("raylib", .{ .root_source_file = b.path(b.pathJoin(&.{ cwd, "raylib.zig" })) });
     std.log.info("include '{s}' to {s}", .{ dir_raylib, exe.name });
     std.log.info("include '{s}' to {s}", .{ cwd, exe.name });
-    exe.addIncludePath(.{ .path = dir_raylib });
-    exe.addIncludePath(.{ .path = cwd });
+    exe.addIncludePath(b.path(dir_raylib));
+    exe.addIncludePath(b.path(cwd));
     const lib = linkThisLibrary(b, target, optimize);
-    const lib_raylib = raylib_build.addRaylib(b, b.resolveTargetQuery(target), optimize, raylibOptions) catch |err| std.debug.panic("addRaylib: {any}", .{err});
+    const lib_raylib = raylib_build.addRaylib(b, target, optimize, raylibOptions) catch |err| std.debug.panic("addRaylib: {any}", .{err});
     exe.linkLibrary(lib_raylib);
     exe.linkLibrary(lib);
     std.log.info("linked raylib.zig", .{});
